@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maestro Twin — production-line digital twin</title>
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230F141B'/><rect x='6' y='16' width='4' height='10' fill='%233FB950'/><rect x='12' y='9' width='4' height='17' fill='%23DB6D28'/><rect x='18' y='6' width='4' height='20' fill='%23F85149'/><rect x='24' y='19' width='4' height='7' fill='%236E7681'/></svg>">
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar">
+    <div class="brand"><b>Maestro Twin</b><span>discrete-event production line</span></div>
+    <div class="lineName" id="lineName"></div>
+    <div class="spacer"></div>
+    <span class="chip" id="provChip" hidden></span>
+    <span class="chip" id="repChip" hidden></span>
+    <button class="chip action" id="validChip" hidden></button>
+    <button class="btn small ghost" id="btnChangeLine" hidden>Change line</button>
+  </header>
+
+  <!-- ==================== launch ==================== -->
+  <section class="launch" id="launch">
+    <div class="launch-inner">
+      <h1>Find out where your line is actually constrained.</h1>
+      <p class="lede">A discrete-event twin of a multi-stage production line. It finds the
+        bottleneck, measures how far one machine's downtime spreads, and tells you which
+        change is worth making — with a confidence interval on every answer.</p>
+      <p class="sub">Pick a line to begin. Everything runs locally; nothing is sent anywhere.</p>
+
+      <div class="section-head">
+        <h2>Reference lines</h2>
+        <p>Built from published process benchmarks, ready to simulate</p>
+      </div>
+      <div class="cards" id="plantCards"></div>
+
+      <div class="describe">
+        <div class="section-head">
+          <h2>Your own factory</h2>
+          <p>Upload real data, describe it, or poll a REST endpoint</p>
+        </div>
+        <p class="sub" style="margin-bottom:0">Your file is normalized into the same
+          canonical model the reference lines use, so every analysis below works on it
+          unchanged. Nothing is uploaded off this machine.</p>
+        <div class="describe-row">
+          <button class="btn primary" id="btnNewFactory">+ Create New Factory</button>
+        </div>
+        <div id="wizard"></div>
+      </div>
+
+      <div class="describe">
+        <div class="section-head">
+          <h2>Start from a company description</h2>
+          <p>Matches an industry archetype — it never invents machine parameters</p>
+        </div>
+        <p class="sub" style="margin-bottom:0">Public sources tell us the industry and the scale.
+          They do not publish cycle times or breakdown rates, so every parameter we did not
+          measure is marked as an estimate until you calibrate against a real shift.</p>
+        <div class="describe-row">
+          <input id="describeInput" placeholder="e.g. a plastic injection moulding plant making appliance housings"
+                 autocomplete="off">
+          <button class="btn primary" id="btnDescribe">Match archetype</button>
+        </div>
+        <div class="matches" id="matches"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== workspace ==================== -->
+  <section class="workspace" id="workspace" hidden>
+    <div class="main">
+
+      <div class="stage-area">
+        <div class="line-head">
+          <span class="title" id="lineSubtitle">The line</span>
+          <span class="spacer"></span>
+          <div class="transport">
+            <button class="btn small" id="btnPlay">Play shift</button>
+            <span class="clock" id="clock">— <b>00:00</b> · 0 units</span>
+            <input type="range" id="scrub" min="0" max="0" value="0" step="1"
+                   aria-label="Shift position">
+            <select id="speed" aria-label="Playback speed">
+              <option value="4">Slow</option>
+              <option value="10" selected>Normal</option>
+              <option value="25">Fast</option>
+            </select>
+            <button class="btn small ghost" id="btnExpandLine" type="button">Expand line</button>
+          </div>
+        </div>
+        <svg id="lineSvg" role="img" aria-label="Production line state"></svg>
+        <div class="legend">
+          <span><i style="background:var(--st-busy)"></i>Producing</span>
+          <span><i style="background:var(--st-setup)"></i>Changeover</span>
+          <span><i style="background:var(--st-down)"></i>Broken down</span>
+          <span><i style="background:var(--st-blocked)"></i>Blocked by next stage</span>
+          <span><i style="background:var(--st-starved)"></i>Waiting on previous stage</span>
+        </div>
+      </div>
+
+      <nav class="tabs" id="tabs">
+        <button class="tab active" data-tab="diagnose">Diagnose</button>
+        <button class="tab" data-tab="live">Live</button>
+        <button class="tab" data-tab="sources">Data sources</button>
+        <button class="tab" data-tab="whatif">What-if</button>
+        <button class="tab" data-tab="advisor">Advisor<span class="badge" id="advisorBadge">…</span></button>
+        <button class="tab" data-tab="calibrate">Calibrate</button>
+        <button class="tab" data-tab="line">Line setup</button>
+      </nav>
+
+      <div class="tabbody" id="tabbody"></div>
+    </div>
+
+    <aside class="rail">
+      <div class="rail-head">
+        <h3 id="railTitle">What the line is telling you</h3>
+        <p id="railSub">Ranked by severity</p>
+      </div>
+      <div class="rail-body" id="railBody"></div>
+    </aside>
+  </section>
+
+</div>
+
+<dialog id="dlg">
+  <div class="dlg-head"><h3 id="dlgTitle"></h3></div>
+  <div class="dlg-body" id="dlgBody"></div>
+  <div class="dlg-foot">
+    <button class="btn" id="dlgClose">Close</button>
+  </div>
+</dialog>
+
+<script src="/app.js"></script>
+<script src="/live.js"></script>
+<script src="/wizard.js"></script>
+</body>
+</html>

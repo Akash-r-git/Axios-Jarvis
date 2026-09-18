@@ -1,0 +1,33 @@
+{
+  "name": "Pharmaceutical Vial Packaging - Line C",
+  "horizon_s": 28800, "warmup_s": 3600, "release_mode": "saturated",
+  "archetype": "pharma_packaging",
+  "stages": [
+    {"id":"S1","name":"Vial Filling","machines":2,
+     "proc":{"kind":"lognorm","mean":30,"cv":0.10},"in_buffer":-1,
+     "mtbf":7200,"repair":{"kind":"lognorm","mean":480,"cv":0.5},"yield":0.995,
+     "setup_time":1200,"batch_size":150,
+     "capex_per_machine":320000,"capex_per_buffer_slot":600},
+    {"id":"S2","name":"Stoppering and Capping","machines":2,
+     "proc":{"kind":"lognorm","mean":28,"cv":0.12},"in_buffer":6,
+     "mtbf":10800,"repair":{"kind":"lognorm","mean":360,"cv":0.4},"yield":0.997,
+     "capex_per_machine":180000,"capex_per_buffer_slot":600},
+    {"id":"S3","name":"Automated Visual Inspection","machines":1,
+     "proc":{"kind":"lognorm","mean":22,"cv":0.35},"in_buffer":6,
+     "mtbf":-1,"repair":{"kind":"det","mean":0},"yield":0.96,
+     "capex_per_machine":250000,"capex_per_buffer_slot":600},
+    {"id":"S4","name":"Labelling","machines":1,
+     "proc":{"kind":"lognorm","mean":25,"cv":0.15},"in_buffer":5,
+     "mtbf":14400,"repair":{"kind":"lognorm","mean":300,"cv":0.4},"yield":0.998,
+     "setup_time":600,"batch_size":150,
+     "capex_per_machine":90000,"capex_per_buffer_slot":500},
+    {"id":"S5","name":"Cartoning","machines":2,
+     "proc":{"kind":"lognorm","mean":40,"cv":0.20},"in_buffer":4,
+     "mtbf":5400,"repair":{"kind":"lognorm","mean":600,"cv":0.6},"yield":0.996,
+     "capex_per_machine":130000,"capex_per_buffer_slot":500},
+    {"id":"S6","name":"Serialisation and Case Pack","machines":1,
+     "proc":{"kind":"lognorm","mean":30,"cv":0.12},"in_buffer":5,
+     "mtbf":21600,"repair":{"kind":"lognorm","mean":300,"cv":0.4},"yield":0.999,
+     "capex_per_machine":110000,"capex_per_buffer_slot":400}
+  ]
+}

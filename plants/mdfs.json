@@ -1,0 +1,130 @@
+{
+  "name": "Injection Moulding & Assembly (reference)",
+  "horizon_s": 28800,
+  "warmup_s": 3600,
+  "release_mode": "saturated",
+  "archetype": "injection_moulding_assembly",
+  "stages": [
+    {
+      "id": "S1",
+      "name": "Injection Moulding",
+      "machines": 2,
+      "proc": {
+        "kind": "lognorm",
+        "mean": 42,
+        "cv": 0.15
+      },
+      "in_buffer": -1,
+      "mtbf": 5400,
+      "repair": {
+        "kind": "lognorm",
+        "mean": 420,
+        "cv": 0.5
+      },
+      "yield": 0.985,
+      "capex_per_machine": 180000,
+      "capex_per_buffer_slot": 900
+    },
+    {
+      "id": "S2",
+      "name": "Cooling / Curing Tunnel",
+      "machines": 3,
+      "proc": {
+        "kind": "lognorm",
+        "mean": 75,
+        "cv": 0.05
+      },
+      "in_buffer": 5,
+      "mtbf": 21600,
+      "repair": {
+        "kind": "lognorm",
+        "mean": 300,
+        "cv": 0.4
+      },
+      "yield": 0.998,
+      "capex_per_machine": 60000,
+      "capex_per_buffer_slot": 700
+    },
+    {
+      "id": "S3",
+      "name": "CNC Machining",
+      "machines": 2,
+      "proc": {
+        "kind": "lognorm",
+        "mean": 55,
+        "cv": 0.25
+      },
+      "in_buffer": 8,
+      "mtbf": 3600,
+      "repair": {
+        "kind": "lognorm",
+        "mean": 600,
+        "cv": 0.6
+      },
+      "yield": 0.97,
+      "setup_time": 150,
+      "batch_size": 30,
+      "capex_per_machine": 240000,
+      "capex_per_buffer_slot": 1100
+    },
+    {
+      "id": "S4",
+      "name": "Assembly Cell",
+      "machines": 2,
+      "proc": {
+        "kind": "lognorm",
+        "mean": 48,
+        "cv": 0.3
+      },
+      "in_buffer": 6,
+      "mtbf": 7200,
+      "repair": {
+        "kind": "lognorm",
+        "mean": 300,
+        "cv": 0.5
+      },
+      "yield": 0.995,
+      "capex_per_machine": 95000,
+      "capex_per_buffer_slot": 800
+    },
+    {
+      "id": "S5",
+      "name": "Quality Inspection",
+      "machines": 1,
+      "proc": {
+        "kind": "lognorm",
+        "mean": 25,
+        "cv": 0.4
+      },
+      "in_buffer": 4,
+      "mtbf": -1,
+      "repair": {
+        "kind": "det",
+        "mean": 0
+      },
+      "yield": 0.93,
+      "capex_per_machine": 45000,
+      "capex_per_buffer_slot": 600
+    },
+    {
+      "id": "S6",
+      "name": "Packaging",
+      "machines": 1,
+      "proc": {
+        "kind": "lognorm",
+        "mean": 20,
+        "cv": 0.1
+      },
+      "in_buffer": 5,
+      "mtbf": 10800,
+      "repair": {
+        "kind": "lognorm",
+        "mean": 240,
+        "cv": 0.4
+      },
+      "yield": 0.999,
+      "capex_per_machine": 70000,
+      "capex_per_buffer_slot": 500
+    }
+  ]
+}
