@@ -1,0 +1,31 @@
+{
+  "name": "SMT Electronics Assembly - Line B",
+  "horizon_s": 28800, "warmup_s": 3600, "release_mode": "saturated",
+  "archetype": "smt_electronics",
+  "stages": [
+    {"id":"S1","name":"Solder Paste Printer","machines":1,
+     "proc":{"kind":"lognorm","mean":22,"cv":0.08},"in_buffer":-1,
+     "mtbf":14400,"repair":{"kind":"lognorm","mean":300,"cv":0.4},"yield":0.998,
+     "capex_per_machine":140000,"capex_per_buffer_slot":400},
+    {"id":"S2","name":"Pick and Place","machines":2,
+     "proc":{"kind":"lognorm","mean":60,"cv":0.06},"in_buffer":6,
+     "mtbf":10800,"repair":{"kind":"lognorm","mean":420,"cv":0.5},"yield":0.999,
+     "capex_per_machine":420000,"capex_per_buffer_slot":400},
+    {"id":"S3","name":"Reflow Oven","machines":6,
+     "proc":{"kind":"lognorm","mean":200,"cv":0.02},"in_buffer":4,
+     "mtbf":43200,"repair":{"kind":"lognorm","mean":900,"cv":0.6},"yield":0.995,
+     "capex_per_machine":55000,"capex_per_buffer_slot":500},
+    {"id":"S4","name":"Automated Optical Inspection","machines":1,
+     "proc":{"kind":"lognorm","mean":30,"cv":0.35},"in_buffer":8,
+     "mtbf":-1,"repair":{"kind":"det","mean":0},"yield":0.94,
+     "capex_per_machine":160000,"capex_per_buffer_slot":400},
+    {"id":"S5","name":"Functional Test","machines":2,
+     "proc":{"kind":"lognorm","mean":70,"cv":0.25},"in_buffer":5,
+     "mtbf":21600,"repair":{"kind":"lognorm","mean":600,"cv":0.5},"yield":0.985,
+     "capex_per_machine":110000,"capex_per_buffer_slot":400},
+    {"id":"S6","name":"Depanel and Pack","machines":1,
+     "proc":{"kind":"lognorm","mean":25,"cv":0.15},"in_buffer":6,
+     "mtbf":28800,"repair":{"kind":"lognorm","mean":240,"cv":0.4},"yield":0.999,
+     "capex_per_machine":65000,"capex_per_buffer_slot":300}
+  ]
+}
