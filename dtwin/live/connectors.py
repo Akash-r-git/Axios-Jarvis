@@ -435,26 +435,59 @@ class SQLConnector(Connector):
 # MDFS
 # ==========================================================================
 class MDFSProfile:
-    """Topic/field profile for the MaestroHub Digital Factory Simulator.
+    """Explicit topic and field mapping for the documented MDFS line."""
 
-    The real topics, REST paths and field names live in docs/mdfs_interface.md.
-    That file was NOT supplied with this repository, so no profile is shipped:
-    inventing topic names would be exactly the fake-integration failure mode
-    this project refuses. A profile can be injected (from the doc, or by a
-    test) and the connector then works generically against it.
-    """
+    DEFAULT_TOPICS = (
+        "factory/LINE-BC-01/events/state_change",
+        "factory/LINE-BC-01/events/cycle",
+        "factory/LINE-BC-01/events/faults",
+        "factory/LINE-BC-01/events/production",
+        "factory/LINE-BC-01/status/equipment/+",
+        "factory/LINE-BC-01/status/buffers/+",
+    )
+    STATIONS = ("OP10-CNC", "OP20-CNC", "OP30-WASH", "OP40-TEST")
+    BUFFER_STAGES = {
+        "OP10-OP20": "OP20-CNC",
+        "OP20-OP30": "OP30-WASH",
+        "OP30-OP40": "OP40-TEST",
+        "BUFFER-OP10-OP20": "OP20-CNC",
+        "BUFFER-OP20-OP30": "OP30-WASH",
+        "BUFFER-OP30-OP40": "OP40-TEST",
+    }
 
-    def __init__(self, event_topic: str, fields: Dict[str, str],
+    def __init__(self, event_topic: Any, fields: Dict[str, str],
                  rest_base: Optional[str] = None,
                  rest_paths: Optional[Dict[str, str]] = None,
                  state_table: Optional[Dict[str, str]] = None,
-                 origin: str = "injected"):
-        self.event_topic = event_topic
+                 origin: str = "injected", event_topics: Optional[List[str]] = None,
+                 stations: Optional[Iterable[str]] = None,
+                 buffer_stages: Optional[Dict[str, str]] = None):
+        self.event_topics = tuple(event_topics or
+                                  ([event_topic] if isinstance(event_topic, str)
+                                   else event_topic))
+        self.event_topic = self.event_topics[0] if self.event_topics else ""
         self.fields = fields
         self.rest_base = rest_base
         self.rest_paths = rest_paths or {}
         self.state_table = state_table or dict(MDFS_STATE_MAP)
         self.origin = origin
+        self.stations = set(stations or ())
+        self.buffer_stages = dict(buffer_stages or {})
+
+    @classmethod
+    def default(cls) -> "MDFSProfile":
+        return cls(
+            cls.DEFAULT_TOPICS,
+            fields={
+                "event_type": "event_type", "ts": "timestamp",
+                "station": "station_id", "machine": "machine_id",
+                "state": "state", "previous_state": "previous_state",
+                "cycle_time": "cycle_time_sec", "quality": "quality",
+                "quantity": "quantity", "fault": "fault_code",
+                "buffer": "buffer_id", "level": "current_level",
+            },
+            origin="documented MDFS LINE-BC-01 profile",
+            stations=cls.STATIONS, buffer_stages=cls.BUFFER_STAGES)
 
 
 class MQTTTransport:
@@ -465,10 +498,12 @@ class MQTTTransport:
     against an actual MDFS instance — see the README.
     """
 
-    def __init__(self, host: str, port: int = 1883, topic: str = "#",
+    def __init__(self, host: str, port: int = 1883, topic: Any = "#",
                  username: Optional[str] = None, password: Optional[str] = None,
                  client_factory: Optional[Callable[[], Any]] = None):
-        self.host, self.port, self.topic = host, port, topic
+        self.host, self.port = host, port
+        self.topics = tuple([topic] if isinstance(topic, str) else topic)
+        self.topic = self.topics[0] if self.topics else ""
         self.username, self.password = username, password
         self.client_factory = client_factory
         self.client = None
@@ -513,7 +548,8 @@ class MQTTTransport:
                 pass
         c.on_message = self.on_message
         c.connect(self.host, self.port, 30)
-        c.subscribe(self.topic)
+        for topic_name in self.topics:
+            c.subscribe(topic_name)
         try:
             c.loop_start()
         except Exception:
@@ -538,20 +574,7 @@ class MQTTTransport:
 
 
 class MDFSConnector(Connector):
-    """MQTT-first connector for the MaestroHub Digital Factory Simulator.
-
-    MDFS is a 4-station serial line (OP10-CNC, OP20-CNC, OP30-WASH, OP40-TEST)
-    with 10-part buffers. MQTT events drive the live twin; REST polling covers
-    buffers, downtime records and the equipment master.
-
-    BLOCKED and STARVED arriving from MDFS are OBSERVED states, recorded as
-    such. IDLE is carried through as IDLE, not folded into STARVED.
-
-    Without docs/mdfs_interface.md and a captured session (neither of which is
-    present in this repository) there is no honest profile to ship, so the
-    connector reports itself UNCONFIGURED and the UI says so. Supplying a
-    profile plus MDFS_MQTT_HOST/MDFS_MQTT_PORT/MDFS_REST_BASE turns it on.
-    """
+    """MQTT connector for the documented four-station MDFS line."""
 
     kind = "mdfs"
     delivery = "live"
@@ -564,7 +587,7 @@ class MDFSConnector(Connector):
         self.profile = profile
         self.transport = transport
         self.rest_opener = rest_opener
-        self.host = os.environ.get("MDFS_MQTT_HOST")
+        self.host = os.environ.get("MDFS_MQTT_HOST", "localhost")
         self.port = int(os.environ.get("MDFS_MQTT_PORT", "1883") or 1883)
         self.rest_base = os.environ.get("MDFS_REST_BASE")
         self.unmapped: Dict[str, int] = {}
@@ -573,6 +596,12 @@ class MDFSConnector(Connector):
         if not self.configured():
             self.notes.append(self.unconfigured_reason())
 
+        self._seen: set = set()
+
+    @staticmethod
+    def default_profile() -> MDFSProfile:
+        return MDFSProfile.default()
+
     # ---- configuration ----------------------------------------------------
     def configured(self) -> bool:
         return self.profile is not None and (
@@ -580,10 +609,7 @@ class MDFSConnector(Connector):
 
     def unconfigured_reason(self) -> str:
         if self.profile is None:
-            return ("UNCONFIGURED: docs/mdfs_interface.md and a captured MDFS "
-                    "session were not supplied, so no topic/field profile "
-                    "exists. Topics and field names are not guessed. Showing "
-                    "the engine-generated replay instead.")
+            return "UNCONFIGURED: no MDFS profile was supplied."
         return ("UNCONFIGURED: set MDFS_MQTT_HOST (and optionally "
                 "MDFS_MQTT_PORT, MDFS_REST_BASE) to connect.")
 
@@ -596,7 +622,7 @@ class MDFSConnector(Connector):
                 raise RuntimeError("paho-mqtt is not installed; install it or "
                                    "use REST polling")
             self.transport = MQTTTransport(
-                self.host, self.port, self.profile.event_topic,
+                self.host, self.port, self.profile.event_topics,
                 os.environ.get("MDFS_MQTT_USER"),
                 os.environ.get("MDFS_MQTT_PASSWORD"))
         self.transport.connect()
@@ -607,17 +633,28 @@ class MDFSConnector(Connector):
 
     # ---- message handling -------------------------------------------------
     def parse_message(self, topic: str, payload: str) -> Optional[Event]:
-        """Turn one MDFS MQTT message into a canonical event.
+        """Turn one event-type-specific MDFS message into a canonical event."""
+        def reject(reason: str) -> None:
+            self.notes = (self.notes + [f"MDFS message rejected: {reason}"])[-5:]
 
-        Purely a function of the injected profile: no topic or field name is
-        hard-coded here.
-        """
         try:
             rec = json.loads(payload)
-        except Exception:
+        except (TypeError, ValueError):
+            reject("malformed JSON")
             return None
         if not isinstance(rec, dict):
+            reject("payload is not an object")
             return None
+        event_key = rec.get("event_id", rec.get("id"))
+        event_key = (f"{topic}:{event_key}" if event_key is not None else
+                     f"{topic}:{json.dumps(rec, sort_keys=True, default=str)}")
+        if event_key in self._seen:
+            reject("duplicate event")
+            return None
+        self._seen.add(event_key)
+        if len(self._seen) > 20000:
+            self._seen.clear()
+            self._seen.add(event_key)
         f = self.profile.fields
         ts = rec.get(f.get("ts", "ts"))
         try:
@@ -626,35 +663,113 @@ class MDFSConnector(Connector):
                 ts /= 1000.0
         except (TypeError, ValueError):
             ts = time.time()
-        stage = str(rec.get(f.get("stage", "stage"), "") or "")
-        machine = str(rec.get(f.get("machine", "machine"), "") or stage)
-        etype = STATE_CHANGE
-        value = None
-        new_state = prev_state = None
-        if f.get("state") and f["state"] in rec:
-            new_state, warn = map_vendor_state(rec[f["state"]],
-                                               self.profile.state_table)
+
+        def get(name: str, *aliases: str):
+            key = f.get(name, name)
+            if key in rec:
+                return rec[key]
+            for alias in aliases:
+                if alias in rec:
+                    return rec[alias]
+            return None
+
+        raw_type = get("event_type")
+        topic_types = {
+            "events/state_change": "STATION_STATE_CHANGE",
+            "events/cycle": "CYCLE_COMPLETE",
+            "events/faults": "FAULT_TRIGGERED",
+            "events/production": "PART_COMPLETED",
+            "status/equipment": "EQUIPMENT_STATUS",
+            "status/buffers/": "BUFFER_STATUS",
+        }
+        etype_name = str(raw_type).upper() if raw_type else ""
+        if not etype_name:
+            for suffix, candidate in topic_types.items():
+                if suffix in topic:
+                    etype_name = candidate
+                    break
+        # Legacy injected profiles predate event_type and remain supported.
+        if not etype_name and not self.profile.stations:
+            etype_name = "STATION_STATE_CHANGE" if get("state") is not None else ""
+        if not etype_name:
+            reject("missing event_type")
+            return None
+
+        station = get("station", "stage")
+        buffer_id = get("buffer")
+        if etype_name == "BUFFER_STATUS":
+            stage = self.profile.buffer_stages.get(str(buffer_id), "")
+            if not stage:
+                reject(f"unknown buffer_id {buffer_id!r}")
+                return None
+        else:
+            stage = str(station or "")
+        if not stage:
+            reject("missing station_id")
+            return None
+        if self.profile.stations and stage not in self.profile.stations:
+            reject(f"unknown station_id {stage!r}")
+            return None
+        machine = str(get("machine", "asset") or stage)
+
+        if etype_name == "FAULT_CLEARED":
+            self.notes = (self.notes + ["FAULT_CLEARED received; awaiting authoritative state"])[-5:]
+            return None
+        if etype_name in ("STATION_STATE_CHANGE", "EQUIPMENT_STATUS"):
+            raw_state = get("state")
+            if raw_state is None:
+                reject("missing state")
+                return None
+            new_state, warn = map_vendor_state(raw_state, self.profile.state_table)
             if warn:
-                key = str(rec[f["state"]])
+                key = str(raw_state)
                 self.unmapped[key] = self.unmapped.get(key, 0) + 1
                 self.notes = (self.notes + [warn])[-5:]
-            if f.get("previous_state") and f["previous_state"] in rec:
-                prev_state, _ = map_vendor_state(rec[f["previous_state"]],
-                                                 self.profile.state_table)
-        elif f.get("buffer") and f["buffer"] in rec:
-            etype, value = BUFFER, rec[f["buffer"]]
-        elif f.get("cycle") and f["cycle"] in rec:
-            etype, value = CYCLE, rec[f["cycle"]]
-        elif f.get("downtime") and f["downtime"] in rec:
-            etype, value = DOWNTIME, rec[f["downtime"]]
-        elif f.get("count") and f["count"] in rec:
-            etype, value = COUNTER, rec[f["count"]]
+            prev_state = None
+            if get("previous_state") is not None:
+                prev_state, _ = map_vendor_state(get("previous_state"), self.profile.state_table)
+            return Event(ts=ts, stage=stage, machine=machine,
+                         event_type=STATE_CHANGE, previous_state=prev_state,
+                         new_state=new_state, source=self.id,
+                         provenance=OBSERVED, raw=rec)
+
+        if etype_name == "FAULT_TRIGGERED":
+            return Event(ts=ts, stage=stage, machine=machine,
+                         event_type=STATE_CHANGE, new_state="DOWN",
+                         source=self.id, provenance=OBSERVED, raw=rec)
+
+        value = None
+        event_type = None
+        if etype_name == "CYCLE_COMPLETE":
+            value, event_type = get("cycle_time", "cycle_time_sec"), CYCLE
+        elif etype_name == "PART_COMPLETED":
+            value, event_type = get("quantity", "count"), COUNTER
+            if value is None:
+                value = 1
+        elif etype_name == "BUFFER_STATUS":
+            value, event_type = get("level", "current_level"), BUFFER
+        else:
+            reject(f"unsupported event_type {etype_name!r}")
+            return None
         try:
             value = float(value) if value is not None else None
         except (TypeError, ValueError):
-            value = None
-        return Event(ts=ts, stage=stage, machine=machine, event_type=etype,
-                     previous_state=prev_state, new_state=new_state,
+            reject(f"invalid value for {etype_name}")
+            return None
+        if value is None:
+            reject(f"missing required field for {etype_name}")
+            return None
+        if value < 0:
+            reject(f"negative value for {etype_name}")
+            return None
+        if etype_name == "PART_COMPLETED":
+            quality = str(get("quality") or "GOOD").lower()
+            if quality not in ("good", "scrap", "rework"):
+                reject(f"unsupported quality {quality!r}")
+                return None
+            rec = dict(rec)
+            rec["kind"] = quality
+        return Event(ts=ts, stage=stage, machine=machine, event_type=event_type,
                      source=self.id, value=value, provenance=OBSERVED, raw=rec)
 
     def _read(self, now: float) -> Iterable[Event]:

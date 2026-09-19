@@ -42,11 +42,12 @@ def start(sess, source: str = "replay", speed: float = 120.0,
     svc = LiveService(twin)
 
     if source == "mdfs":
-        mdfs = MDFSConnector("mdfs")
-        svc.add(mdfs, connect=True)        # will land in ERROR if unconfigured
-        if not mdfs.configured():
-            # Honest fallback: the recorded MDFS session was not supplied, so
-            # we run the engine-generated replay and say exactly that.
+        mdfs = MDFSConnector("mdfs", profile=MDFSConnector.default_profile())
+        if mdfs.connect():
+            svc.add(mdfs, connect=False)
+        else:
+            # A failed live source is never presented as a live feed; the
+            # connected primary becomes an explicitly labelled replay.
             svc.add(synthetic_replay_connector(twin.plant, speed=speed,
                                                horizon=horizon))
     elif source == "rest":

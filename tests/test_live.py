@@ -342,6 +342,101 @@ def t_mqtt_reconnect():
     assert_true(conn.state == CONNECTED, "retry did not reconnect")
 
 
+@S.check("The shipped MDFS profile subscribes to all explicit topics")
+def t_mdfs_profile_topics():
+    profile = MDFSProfile.default()
+    assert_true(len(profile.event_topics) == 6, "MDFS topic list is incomplete")
+    assert_true(all("#" not in topic for topic in profile.event_topics),
+                "MDFS profile uses a broad wildcard")
+    transport = MQTTTransport("fake", topic=list(profile.event_topics),
+                              client_factory=lambda: type("C", (), {
+                                  "connect": lambda self, *a: None,
+                                  "subscribe": lambda self, topic: getattr(self, "seen", setattr(self, "seen", []) or []).append(topic),
+                                  "loop_start": lambda self: None,
+                              })())
+    transport.connect()
+    assert_true(len(transport.topics) == 6, "multi-topic transport lost topics")
+
+
+@S.check("MDFS event-specific payloads normalize without cumulative status counts")
+def t_mdfs_event_mapping():
+    conn = MDFSConnector(profile=MDFSProfile.default(),
+                         transport=MQTTTransport("unused", topic=[]))
+    base = {"timestamp": 1700000000, "station_id": "OP20-CNC",
+            "machine_id": "OP20-CNC", "event_id": "x"}
+
+    state = dict(base, event_type="STATION_STATE_CHANGE", state="RUNNING")
+    ev_state = conn.parse_message("factory/LINE-BC-01/events/state_change",
+                                  json.dumps(state))
+    assert_true(ev_state.new_state == BUSY, "state event was not mapped")
+
+    cycle = dict(base, event_id="cycle", event_type="CYCLE_COMPLETE",
+                 cycle_time_sec=42.5)
+    ev_cycle = conn.parse_message("factory/LINE-BC-01/events/cycle",
+                                  json.dumps(cycle))
+    assert_true(ev_cycle.event_type == "cycle" and ev_cycle.value == 42.5,
+                "cycle_time_sec was not used")
+
+    fault = dict(base, event_id="fault", event_type="FAULT_TRIGGERED",
+                 fault_code="F-1")
+    ev_fault = conn.parse_message("factory/LINE-BC-01/events/faults",
+                                  json.dumps(fault))
+    assert_true(ev_fault.new_state == DOWN, "fault was not mapped to DOWN")
+
+    part = dict(base, event_id="part", event_type="PART_COMPLETED",
+                quality="SCRAP")
+    ev_part = conn.parse_message("factory/LINE-BC-01/events/production",
+                                json.dumps(part))
+    assert_true(ev_part.event_type == "counter" and ev_part.raw["kind"] == "scrap",
+                "part quality was not preserved")
+
+    status = dict(base, event_id="status-1", event_type="EQUIPMENT_STATUS",
+                  state="RUNNING", parts_produced=100, parts_good=99)
+    ev_status = conn.parse_message("factory/LINE-BC-01/status/equipment/OP20-CNC",
+                                  json.dumps(status))
+    assert_true(ev_status.event_type == STATE_CHANGE,
+                "equipment status was treated as production")
+
+    buffer = {"timestamp": 1700000000, "event_id": "buffer",
+              "event_type": "BUFFER_STATUS", "buffer_id": "OP10-OP20",
+              "current_level": 7}
+    ev_buffer = conn.parse_message("factory/LINE-BC-01/status/buffers/OP10-OP20",
+                                  json.dumps(buffer))
+    assert_true(ev_buffer.event_type == "buffer" and ev_buffer.stage == "OP20-CNC",
+                "buffer was mapped to the wrong stage")
+
+    duplicate = conn.parse_message("factory/LINE-BC-01/events/production",
+                                   json.dumps(part))
+    assert_true(duplicate is None, "duplicate part was emitted twice")
+
+    tw = LiveTwin(Plant(name="mdfs", stages=[
+        Stage(id="OP20-CNC", name="OP20-CNC", proc=Dist("det", 1),
+              in_buffer=10, mtbf=INF, repair=Dist("det", 0))]))
+    tw.apply(ev_part)
+    tw.apply(ev_status)
+    tw.apply(ev_status)
+    assert_true(tw.counters["scrap"] == 1 and tw.counters["good"] == 0,
+                "cumulative equipment counters inflated production")
+
+
+@S.check("MDFS rejects malformed, missing, and unknown records")
+def t_mdfs_rejections():
+    conn = MDFSConnector(profile=MDFSProfile.default(),
+                         transport=MQTTTransport("unused", topic=[]))
+    assert_true(conn.parse_message("x", "not-json") is None,
+                "malformed JSON was accepted")
+    assert_true(conn.parse_message("x", json.dumps({"station_id": "OP10-CNC"})) is None,
+                "missing event type was accepted")
+    bad_station = {"event_type": "STATION_STATE_CHANGE", "station_id": "NOPE",
+                   "state": "RUNNING", "timestamp": 1700000000}
+    assert_true(conn.parse_message("x", json.dumps(bad_station)) is None,
+                "unknown station was accepted")
+    bad_buffer = {"event_type": "BUFFER_STATUS", "buffer_id": "NOPE",
+                  "current_level": 1, "timestamp": 1700000000}
+    assert_true(conn.parse_message("x", json.dumps(bad_buffer)) is None,
+                "unknown buffer was accepted")
+
+
 @S.check("REST polling honours its interval and maps vendor states")
 def t_rest():
     payload = json.dumps([

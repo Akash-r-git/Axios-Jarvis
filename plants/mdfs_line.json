@@ -1,0 +1,20 @@
+{
+  "name": "MDFS LINE-BC-01",
+  "horizon_s": 28800,
+  "warmup_s": 3600,
+  "release_mode": "saturated",
+  "stages": [
+    {"id": "OP10-CNC", "name": "OP10 CNC", "machines": 1,
+     "proc": {"kind": "det", "mean": 45}, "in_buffer": -1,
+     "mtbf": 7200, "repair": {"kind": "det", "mean": 300}, "yield": 0.99},
+    {"id": "OP20-CNC", "name": "OP20 CNC", "machines": 1,
+     "proc": {"kind": "det", "mean": 50}, "in_buffer": 10,
+     "mtbf": 7200, "repair": {"kind": "det", "mean": 300}, "yield": 0.99},
+    {"id": "OP30-WASH", "name": "OP30 Wash", "machines": 1,
+     "proc": {"kind": "det", "mean": 35}, "in_buffer": 10,
+     "mtbf": 7200, "repair": {"kind": "det", "mean": 300}, "yield": 0.995},
+    {"id": "OP40-TEST", "name": "OP40 Test", "machines": 1,
+     "proc": {"kind": "det", "mean": 30}, "in_buffer": 10,
+     "mtbf": 7200, "repair": {"kind": "det", "mean": 300}, "yield": 0.99}
+  ]
+}

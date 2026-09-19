@@ -72,7 +72,7 @@ class LiveTwin:
         self.buffers: Dict[str, dict] = {}
         self.counters: Dict[str, float] = {
             "events_applied": 0, "events_rejected": 0,
-            "good": 0, "scrap": 0, "failures": 0,
+            "good": 0, "scrap": 0, "rework": 0, "failures": 0,
         }
         self.cycles: Dict[str, deque] = {}
         self.downtimes: Dict[str, deque] = {}
@@ -130,9 +130,9 @@ class LiveTwin:
                 ms.provenance = ev.provenance
                 ms.source = ev.source
             elif ev.event_type == COUNTER:
-                kind = "scrap" if str(ev.raw or {}).find("scrap") >= 0 else None
-                kind = kind or ("scrap" if (ev.raw or {}).get("kind") == "scrap"
-                                else "good")
+                kind = str((ev.raw or {}).get("kind", "good")).lower()
+                if kind not in ("good", "scrap", "rework"):
+                    kind = "good"
                 self.counters[kind] += float(ev.value)
             elif ev.event_type == BUFFER:
                 cap = self.buffers.get(ev.stage, {}).get("capacity")
